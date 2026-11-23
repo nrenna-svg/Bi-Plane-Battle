@@ -1,0 +1,18 @@
+const assert=require('node:assert/strict'),{load}=require('./load-typescript.cjs');
+const {Battle}=load('lib/battle.ts'),{updateFlightEnvelope}=load('lib/flight-envelope.ts');
+const {workshopSpec,newWorkshop}=load('lib/workshop.ts');
+const stock=newWorkshop(),built=newWorkshop();built.ranks.engine=3;built.ranks.wings=3;
+const a=workshopSpec(stock,'scout'),b=workshopSpec(built,'scout');
+assert.equal(a.speed,235);assert.equal(b.speed,286);assert.equal(a.accel,300);assert.equal(b.accel,450);assert.equal(a.lift,400);assert.equal(b.lift,550);
+for(const key of ['speed','accel','lift','climb'])assert.equal(b[key],workshopSpec(stock,'stunt')[key]);
+const g=new Battle();g.start();g.briefingTimer=0;
+for(let i=0;i<240;i++)updateFlightEnvelope(g,1/60,true);assert.equal(g.flightStrain,1);assert(updateFlightEnvelope(g,.01,true)>.99);
+assert(g.sounds.includes('stall'));const warningCount=g.sounds.length;updateFlightEnvelope(g,.1,true);assert.equal(g.sounds.length,warningCount);
+for(let i=0;i<120;i++)updateFlightEnvelope(g,1/60,false);assert(g.flightStrain<.001);
+g.workshop=built;for(let i=0;i<240;i++)updateFlightEnvelope(g,1/60,true);assert(g.flightStrain<.65);
+g.mode='paused';const strain=g.flightStrain;g.update(.03,new Set(['Space']));assert.equal(g.flightStrain,strain);
+g.mode='playing';g.briefingTimer=2;g.update(.03,new Set(['Space']));assert.equal(g.flightStrain,strain);
+g.campaignCheckpoint=5;g.startCampaign(5);assert.equal(g.flightStrain,0);
+g.flightStrain=1;g.loseLife();assert.equal(g.flightStrain,0);
+g.start(true);updateFlightEnvelope(g,10,true);assert.equal(g.flightStrain,0);assert.equal(g.spec.speed,290);
+console.log('PASS: meaningful early upgrades, aircraft parity, lift loss, warning cadence, recovery, pause/briefing/reset and unchanged daily rules');

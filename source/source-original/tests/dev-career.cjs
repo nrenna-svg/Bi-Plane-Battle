@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),{load}=require('./load-typescript.cjs');
+const {resetCareer,restoreCareer,backupCareer,readBackup,BACKUP_KEY}=load('lib/dev-career.ts');
+class Memory {data=new Map();fail='';get length(){return this.data.size}key(i){return [...this.data.keys()][i]}getItem(k){return this.data.get(k)??null}setItem(k,v){if(this.fail===k){this.fail='';throw Error('quota')}this.data.set(k,v)}removeItem(k){this.data.delete(k)}}
+const s=new Memory();s.setItem('biplane-battle-best','900');s.setItem('biplane-workshop-v1','{"credits":200}');s.setItem('biplane-battle-daily-8.64','daily');s.setItem('biplane-audio','prefs');s.setItem('biplane-dev-password','hash');s.setItem('unrelated','keep');
+const before=JSON.stringify([...s.data]);s.fail=BACKUP_KEY;assert.throws(()=>resetCareer(s));assert.equal(JSON.stringify([...s.data]),before,'failed backup must not clear career');
+resetCareer(s);assert.equal(s.getItem('biplane-battle-best'),null);assert.equal(s.getItem('biplane-battle-daily-8.64'),null);assert.equal(s.getItem('biplane-audio'),'prefs');assert.equal(s.getItem('biplane-dev-password'),'hash');assert.equal(s.getItem('unrelated'),'keep');assert.equal(readBackup(s).data['biplane-battle-best'],'900');
+s.setItem('biplane-battle-best','50');s.fail='biplane-workshop-v1';assert.throws(()=>restoreCareer(s));assert.equal(s.getItem('biplane-battle-best'),'50','restore rollback on storage failure');restoreCareer(s);assert.equal(s.getItem('biplane-battle-best'),'900');assert.equal(s.getItem('biplane-battle-daily-8.64'),'daily');
+s.setItem(BACKUP_KEY,JSON.stringify({savedAt:new Date().toISOString(),data:{'biplane-dev-password':'injected'}}));assert.throws(()=>restoreCareer(s));assert.equal(s.getItem('biplane-battle-best'),'900');assert.equal(s.getItem('biplane-dev-password'),'hash');
+backupCareer(s);let old=JSON.parse(s.getItem(BACKUP_KEY));old.data['biplane-career-generation']='old';s.setItem(BACKUP_KEY,JSON.stringify(old));restoreCareer(s);assert.equal(s.getItem('biplane-battle-best'),'900');
+console.log('PASS: reset backup ordering, rollback, settings/password preservation, restore validation, legacy backups');

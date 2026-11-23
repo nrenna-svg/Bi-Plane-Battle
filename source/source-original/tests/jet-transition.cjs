@@ -1,0 +1,5 @@
+const assert=require('node:assert/strict'),{load}=require('./load-typescript.cjs'),{Battle}=load('lib/battle.ts');
+const g=new Battle(()=>.5);g.start();g.enemies=[];g.nextWave=2.99;g.jet={x:1800,y:220,dir:1,life:2.8};g.jetTimer=24;const jet=g.jet;g.update(.02,new Set());assert.equal(g.wave,2);assert.equal(g.jet,jet);assert.ok(jet.x>1800);assert.ok(jet.life>2.7);assert.ok(g.jetTimer>23);
+g.wave=3;g.spawnWave();g.mission.progress=5;g.updateMission(0);assert.equal(g.jet,jet);const life=jet.life;g.update(.02,new Set());assert.equal(jet.life,life);g.wave=4;g.spawnWave();g.invulnerable=0;g.player.x=jet.x;g.player.y=jet.y-20;g.player.vy=100;g.updateJet(0);assert.equal(g.jet,null);assert.equal(g.stats.jets,1);
+g.jet={x:1800,y:220,dir:1,life:.01};g.player.x=600;g.updateJet(.02);assert.equal(g.jet,null);g.start();assert.equal(g.jet,null);assert.equal(g.jetTimer,10);
+console.log('PASS: jet survives ordinary and mission transitions, resumes with remaining lifetime, remains interceptable, expires normally and resets on new flight.');

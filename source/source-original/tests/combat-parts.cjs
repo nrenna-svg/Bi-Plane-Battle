@@ -1,0 +1,24 @@
+const assert=require('node:assert/strict'),{load}=require('./load-typescript.cjs');
+const {Battle,newPlane}=load('lib/battle.ts');
+const {equipSpecialist,hitAircraftPart,hitTrainTurret,specialistWeak}=load('lib/combat-parts.ts');
+const {flyVehicle,vehicleCollision}=load('lib/vehicles.ts');
+const {updateGunship,bellyOpen}=load('lib/gunship.ts');
+const {updateCampaign}=load('lib/campaign.ts');
+const {updateSetpiece}=load('lib/mission-setpieces.ts');
+const enemy=()=>({...newPlane(),x:900,y:250,kind:'pursuer',maxHp:4,hp:4,targetX:600,targetY:250});
+const g=new Battle(()=>.5);g.start();g.enemies=[];g.invulnerable=0;
+const heli=enemy();heli.gunship=true;heli.vehicle='helicopter';
+for(let i=0;i<3;i++)assert(hitAircraftPart(g,heli,{x:920,y:270,damage:1}));
+assert.equal(heli.podHp,0);assert(bellyOpen(heli));for(let i=0;i<600;i++)updateGunship(g,heli,.025);assert.equal(heli.missile,undefined);assert(g.debris.some(d=>d.source==='pod'));assert.equal(heli.hp,4);
+const wing=enemy();for(let i=0;i<3;i++)hitAircraftPart(g,wing,{x:900,y:235});assert(wing.wingBroken);assert(g.debris.some(d=>d.shape===0));assert.equal(wing.hp,4);
+const iron=enemy();equipSpecialist(iron,'bulwark');assert(specialistWeak(iron,875,250));assert(!specialistWeak(iron,925,250));assert(!specialistWeak(iron,900,230));
+const lancer=enemy();equipSpecialist(lancer,'charger');lancer.vehicleTime=3;assert(!specialistWeak(lancer,925,250));lancer.vehicleTime=6;assert(specialistWeak(lancer,925,250));assert(!specialistWeak(lancer,875,250));flyVehicle(g,lancer,.01);assert.equal(lancer.vx,65);
+const twin=enemy();equipSpecialist(twin,'twin');g.enemies=[twin];const kills=g.stats.kills;
+hitAircraftPart(g,twin,{x:900,y:231,damage:6});assert.equal(twin.hp,2);assert.equal(g.stats.kills,kills);hitAircraftPart(g,twin,{x:900,y:231,damage:6});assert.equal(twin.hp,2);
+hitAircraftPart(g,twin,{x:900,y:269,damage:3});assert.equal(twin.hp,0);assert.equal(g.stats.kills,kills+1);
+g.campaignCheckpoint=34;g.startCampaign(23);g.briefingTimer=0;const car=g.campaign.carriages[0],x=car.x;
+hitTrainTurret(g,{x:car.x,y:car.y-36,damage:3});assert.equal(car.turretHp,0);assert.equal(car.hp,3);car.cool=0;g.bullets=[];for(const c of g.campaign.carriages.slice(1))c.cool=100;updateCampaign(g,.1);assert(car.x>x);assert.equal(g.bullets.length,0);assert.equal(g.campaign.progress,0);
+for(const [stage,kind] of [[16,'bulwark'],[21,'charger'],[31,'twin']]){g.startCampaign(stage);g.briefingTimer=0;g.campaign.spawn=0;updateCampaign(g,.03);assert.equal(g.enemies[0].specialist,kind);g.campaign.spawn=0;updateCampaign(g,.03);assert.equal(g.enemies.length,1);}
+g.startCampaign(27);g.briefingTimer=0;g.invulnerable=0;g.player.cool=0;g.player.x=1450;g.player.y=500;const hp=g.player.hp;g.campaign.elapsed=1;updateSetpiece(g,.03);assert.equal(g.player.hp,hp);g.campaign.elapsed=3;updateSetpiece(g,.03);assert(g.player.hp<hp);
+g.startCampaign(12);g.briefingTimer=0;g.campaign.elapsed=3;const vx=g.player.vx;updateSetpiece(g,.1);assert.notEqual(g.player.vx,vx);g.campaign.transition=1;const stopped=g.player.vx;updateSetpiece(g,.1);assert.equal(g.player.vx,stopped);
+console.log('PASS: disarmed pods, wing shedding, directional armor, charge windows, both engines, moving disabled turrets, solo introductions, warned fires and storm transitions');

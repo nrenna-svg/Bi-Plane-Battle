@@ -1,0 +1,10 @@
+const assert=require('node:assert/strict'),{load}=require('./load-typescript.cjs'),{Battle}=load('lib/battle.ts');
+const g=new Battle();g.start();g.enemies=[];g.nextWave=-1000;g.invulnerable=100;g.landed=true;g.player.y=585;g.player.vx=0;g.player.hp=1;
+for(let i=0;i<481;i++)g.update(1/60,new Set());
+assert.equal(g.landed,false);assert.ok(g.runwayCooldown>9.9);assert.ok(g.player.vy<0);assert.equal(g.player.hp,3);
+const budget=g.runwayTime;g.player.y=585;g.player.x=600;g.player.vx=0;g.player.vy=50;g.update(1/60,new Set(['ArrowDown']));assert.equal(g.landed,false);assert.ok(g.player.vy<0);assert.equal(g.runwayTime,budget);
+g.pause();const cooldown=g.runwayCooldown;g.update(.03,new Set());assert.equal(g.runwayCooldown,cooldown);g.pause();
+g.runwayCooldown=0;g.player.x=1000;g.player.y=300;g.update(.01,new Set());assert.equal(g.runwayTime,0);
+g.player.x=600;g.player.y=585;g.player.vx=0;g.player.vy=50;g.update(.01,new Set(['ArrowDown']));assert.equal(g.landed,true);
+g.runwayTime=3;g.update(.01,new Set(['Space']));assert.equal(g.landed,false);assert.ok(g.runwayTime>=3);g.start();assert.equal(g.runwayTime,0);assert.equal(g.runwayCooldown,0);
+console.log('PASS: runway service repairs, forced launch, re-landing lockout, pause, flight-circuit reset and fresh-run reset.');

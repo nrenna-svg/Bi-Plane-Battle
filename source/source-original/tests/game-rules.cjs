@@ -1,0 +1,16 @@
+const fs=require('node:fs'),vm=require('node:vm'),assert=require('node:assert/strict'),ts=require('typescript');
+const m={exports:{}};vm.runInNewContext(ts.transpileModule(fs.readFileSync('lib/game-rules.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,m);
+const {ceiling,collision,perfectJetHit}=m.exports;
+const plane=(v={})=>({x:500,y:300,vx:100,vy:0,dir:1,cool:0,hp:3,stall:0,...v});
+let a=plane({y:40,vy:-245});assert.equal(ceiling(a),true);assert.equal(a.y,60);assert.ok(a.vy>200);assert.ok(a.stall>=1);
+for(let i=0;i<60;i++){a.stall=Math.max(0,a.stall-1/60);a.vy+=(a.stall>0?160:-560)/60;a.y+=a.vy/60;ceiling(a)}assert.ok(a.y>200,'held climb must leave ceiling');
+a=plane({x:470});let b=plane();assert.equal(collision(a,b),true);assert.equal(b.hp,2);assert.equal(a.hp,3);assert.equal(collision(a,b),false,'cooldown stops repeated damage');
+a=plane({y:275});b=plane();collision(a,b);assert.equal(b.hp,1);assert.equal(a.hp,3);
+a=plane({x:470});b=plane({dir:-1});collision(a,b);assert.equal(a.hp,2);assert.equal(b.hp,2);
+a=plane({x:2980});b=plane({x:10});collision(a,b);assert.equal(b.hp,2,'rear hits work across world seam');
+a=plane({x:470});b=plane({hp:1});collision(a,b);assert.equal(b.hp,0);
+assert.equal(perfectJetHit(plane({y:275,vy:120}),{x:500,y:300}),true);
+assert.equal(perfectJetHit(plane({y:275,vy:-120}),{x:500,y:300}),false);
+assert.equal(perfectJetHit(plane({y:320,vy:120}),{x:500,y:300}),false);
+assert.equal(perfectJetHit(plane({x:800,y:275,vy:120}),{x:500,y:300}),false);
+console.log('PASS: ceiling escape, rear/top/head-on damage, hit cooldown, wraparound collision, health depletion, perfect jet hits and misses.');

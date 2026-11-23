@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),{load}=require('./load-typescript.cjs');
+const {Battle}=load('lib/battle.ts'),{enterCampaignStage,updateCampaign}=load('lib/campaign.ts'),{beginFinale,updateFinale,applyFinaleCamera}=load('lib/boss-finale.ts'),{drawBattle}=load('lib/battle-renderer.ts');
+const fresh=()=>{const g=new Battle(()=>.5);g.start();return g};
+let g=fresh();g.wave=5;g.spawnWave();g.boss.engines=[0,0,0,0];g.finishBoss();assert.equal(g.finale.kind,'airship');assert.equal(g.stats.bosses,1);const score=g.score;g.finishBoss();assert.equal(g.score,score);
+const player={...g.player},wave=g.wave,jet={x:1000,y:160,dir:1,life:10};g.jet=jet;g.pause();g.update(.03,new Set());assert.equal(g.finale.time,0);g.pause();assert.equal(g.dropBomb(),false);assert.equal(g.useAbility(),false);assert.equal(g.dodge(),false);
+for(let i=0;i<80;i++)g.update(.03,new Set(['KeyF','Space']));assert.equal(g.wave,wave);assert.equal(g.player.x,player.x);assert.equal(g.player.y,player.y);assert.equal(jet.life,10);assert.ok(g.finale.burst>=7);assert.ok(g.particles.length>0);assert.ok(g.camera!==g.finale.originCamera);
+for(let i=0;i<100;i++)g.update(.03,new Set());assert.equal(g.finale,null);assert.equal(g.shake,0);assert.equal(g.flash,0);assert.equal(g.hitStop,0);
+g=fresh();enterCampaignStage(g,23);g.briefingTimer=0;for(const t of g.campaign.carriages)t.hp=0;updateCampaign(g,.01);assert.equal(g.finale.kind,'train');const transition=g.campaign.transition;for(let i=0;i<80;i++)g.update(.03,new Set());assert.equal(g.campaign.stage,23);assert.equal(g.campaign.transition,transition);
+for(let i=0;i<100;i++)g.update(.03,new Set());assert.equal(g.refitPending,true);assert.equal(g.chooseRefit("cooling"),true);for(let i=0;i<105;i++)g.update(.03,new Set());assert.equal(g.campaign.stage,24);assert.equal(g.finale,null);assert.equal(g.shake,0);assert.equal(g.flash,0);assert.ok(g.briefingTimer>0);
+g=fresh();enterCampaignStage(g,13);g.briefingTimer=0;g.boss.engines=[0,0,0,0];g.boss.core=0;g.finishBoss();assert.equal(g.finale.kind,'carrier');for(let i=0;i<170;i++)g.update(.03,new Set());assert.equal(g.stats.bosses,1);
+g=fresh();g.shake=15;g.flash=.2;g.hitStop=1;g.slowMotion=1;enterCampaignStage(g,17);assert.equal(g.shake,0);assert.equal(g.flash,0);assert.equal(g.hitStop,0);assert.equal(g.slowMotion,0);
+g=fresh();g.reducedMotion=true;beginFinale(g,'airship',1200,250);const camera=g.camera;updateFinale(g,1);assert.equal(g.camera,camera);let transforms=0;applyFinaleCamera({translate(){transforms++},scale(){transforms++}},g);assert.equal(transforms,0);g.start();assert.equal(g.finale,null);
+const ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
+for(const kind of ['train','airship','carrier']){g=fresh();beginFinale(g,kind,1200,kind==='train'?580:245,[{x:1100,y:580},{x:1230,y:580}]);for(const time of [.1,1,2,3.4,4.5]){g.finale.time=time;drawBattle(ctx,g)}}
+console.log('PASS: boss cinematic types, single rewards, pause, frozen gameplay/jet, control guards, staged effects, delayed progression, clean briefing, reduced motion, reset and rendering.');

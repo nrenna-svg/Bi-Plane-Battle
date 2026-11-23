@@ -1,0 +1,30 @@
+import { flightRank } from "./flight-envelope";
+import { PLANES, planeUnlocked, type PlaneId, type Profile } from "./progression";
+import { STAGE_IDS, starRules } from "./mission-catalog";
+export const UPGRADES={engine:{name:"Engine",detail:"Higher speed, longer sustained climbs and faster recovery"},wings:{name:"Wing rigging",detail:"Stronger lift, quicker reversals and less climb strain"},hull:{name:"Hull",detail:"Stronger hull capacity, with larger early-rank gains"},armor:{name:"Armor",detail:"Reserve protection replenishes each mission"},guns:{name:"Gun cooling",detail:"Improved heat dissipation for longer bursts"},gear:{name:"Landing gear",detail:"Safer approaches and faster runway service"}} as const;
+export type Upgrade=keyof typeof UPGRADES;
+export type Mastery={stars:string[];perfect:boolean;clears:number;bestScore:number;bestTime:number};
+export type Workshop={revision:2;investment:number;credits:number;owned:PlaneId[];ranks:Record<Upgrade,number>;missions:Record<string,Mastery>};
+export const newWorkshop=():Workshop=>({revision:2,investment:0,credits:0,owned:["scout"],ranks:{engine:0,wings:0,hull:0,armor:0,guns:0,gear:0},missions:{}});
+const integer=(n:unknown,max=1000000)=>typeof n==="number"&&Number.isFinite(n)?Math.max(0,Math.min(max,Math.floor(n))):0;
+export function readWorkshop(raw:string|null,profile:Profile):Workshop{const w=newWorkshop();if(!raw){w.owned=(Object.keys(PLANES) as PlaneId[]).filter(id=>planeUnlocked(id,profile));w.investment=Math.max(...w.owned.map(aircraftPrice),0);return w}try{const v=JSON.parse(raw);if(v.revision!==1&&v.revision!==2)return w;w.credits=integer(v.credits)*(v.revision===1?10:1);w.investment=integer(v.investment,1e9);w.owned=(Object.keys(PLANES) as PlaneId[]).filter(id=>id==="scout"||Array.isArray(v.owned)&&v.owned.includes(id));for(const id of Object.keys(UPGRADES) as Upgrade[])w.ranks[id]=integer(v.ranks?.[id],48);if(v.revision===1){w.investment=Math.max(...w.owned.map(aircraftPrice),0)+Object.values(w.ranks).reduce((sum,n)=>sum+[0,120,470,1270][Math.min(3,n)],0)}for(let i=0;i<STAGE_IDS.length;i++){const id=STAGE_IDS[i],r=v.missions?.[id];if(!r||!Array.isArray(r.stars))continue;w.missions[id]={stars:starRules(i).filter(s=>r.stars.includes(s.id)).map(s=>s.id),perfect:r.perfect===true,clears:integer(r.clears),bestScore:integer(r.bestScore,1e9),bestTime:typeof r.bestTime==="number"&&Number.isFinite(r.bestTime)&&r.bestTime>=0?r.bestTime:999999}}}catch{}return w}
+export const totalStars=(w:Workshop)=>Object.values(w.missions).reduce((n,m)=>n+m.stars.length,0);
+export const PLANE_ORDER=Object.keys(PLANES) as PlaneId[];
+export const aircraftTier=(id:PlaneId)=>PLANE_ORDER.indexOf(id);
+export const rankFloor=(id:PlaneId)=>aircraftTier(id)*3;
+export const rankCap=(id:PlaneId)=>rankFloor(id)+3;
+export const effectiveRank=(w:Workshop,id:PlaneId,key:Upgrade)=>Math.min(rankCap(id),Math.max(rankFloor(id),w.ranks[key]));
+export const upgradePrice=(rank:number)=>Math.round([60,90,120][rank%3]*(1+Math.floor(rank/3)*.25));
+export function aircraftPrice(id:PlaneId){let cost=0;for(let rank=0;rank<rankFloor(id);rank++)cost+=upgradePrice(rank)*6;return Math.round(cost*1.1)}
+export const aircraftDue=(w:Workshop,id:PlaneId)=>Math.max(0,aircraftPrice(id)-w.investment);
+export function aircraftStars(id:PlaneId){return Math.max(0,aircraftTier(id)*8)}
+export function buyUpgrade(w:Workshop,id:string,plane:PlaneId="scout"){if(!Object.hasOwn(UPGRADES,id)||!w.owned.includes(plane))return false;const k=id as Upgrade,rank=effectiveRank(w,plane,k),cost=upgradePrice(rank);if(rank>=rankCap(plane)||w.credits<cost)return false;w.credits-=cost;w.investment+=cost;w.ranks[k]=rank+1;return true}
+export function buyAircraft(w:Workshop,id:string){if(!Object.hasOwn(PLANES,id)||w.owned.includes(id as PlaneId)||totalStars(w)<aircraftStars(id as PlaneId)||w.credits<aircraftDue(w,id as PlaneId))return false;const cost=aircraftDue(w,id as PlaneId);w.credits-=cost;w.investment+=cost;w.owned.push(id as PlaneId);return true}
+export function equipment(w:Workshop,id:PlaneId){return Object.fromEntries((Object.keys(UPGRADES) as Upgrade[]).map(k=>[k,effectiveRank(w,id,k)])) as Record<Upgrade,number>}
+export function workshopSpec(w:Workshop,id:PlaneId){const u=equipment(w,id);return {...PLANES[id],hp:Math.round((3+flightRank(u.hull)*.4)*10)/10,speed:235+flightRank(u.engine)*17,accel:300+flightRank(u.wings)*50,lift:400+flightRank(u.wings)*50,climb:175+flightRank(u.wings)*21}}
+export function componentValue(w:Workshop,id:PlaneId,key:Upgrade){const u=equipment(w,id),p=workshopSpec(w,id);return key==="engine"?Math.round(p.speed)+" speed":key==="wings"?Math.round(p.lift)+" lift / "+Math.round(p.accel)+" handling":key==="hull"?Math.round(p.hp*10)+" hull":key==="armor"?Math.round(u.armor/3*10)+" protection":key==="guns"?Math.round(100+u.guns*4)+"% cooling":Math.round(105+u.gear*5)+" landing speed"}
+export function nextComponentValue(w:Workshop,id:PlaneId,key:Upgrade){const copy={...w,ranks:{...w.ranks,[key]:effectiveRank(w,id,key)+1}};return componentValue(copy,id,key)}
+export type Attempt={elapsed:number;damage:number;rescues:number;score:number;shots:number;bombs:number;plane:PlaneId};
+export function rewardMission(w:Workshop,stage:number,a:Attempt){const id=STAGE_IDS[stage],rules=starRules(stage),stars=rules.filter(r=>r.kind==="complete"||r.kind==="time"&&a.elapsed<=(r.target??0)||r.kind==="clean"&&a.damage===0||r.kind==="rescues"&&a.rescues>=(r.target??0)||r.kind==="score"&&a.score>=(r.target??0)||r.kind==="noGuns"&&a.shots===0||r.kind==="noBombs"&&a.bombs===0||r.kind==="starter"&&a.plane==="scout").map(r=>r.id);
+ const prior=w.missions[id],newStars=stars.filter(s=>!prior?.stars.includes(s)),credits=(prior?10:100)+newStars.length*20;
+ w.missions[id]={stars:rules.filter(r=>stars.includes(r.id)||prior?.stars.includes(r.id)).map(r=>r.id),perfect:prior?.perfect===true||stars.length===5,clears:(prior?.clears??0)+1,bestScore:Math.max(prior?.bestScore??0,a.score),bestTime:Math.min(prior?.bestTime??Infinity,a.elapsed)};w.credits+=credits;return {stars,newStars,credits,perfect:stars.length===5};}

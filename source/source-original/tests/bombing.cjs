@@ -1,0 +1,15 @@
+const assert=require('node:assert/strict'),{load}=require('./load-typescript.cjs');
+const {Battle}=load('lib/battle.ts'),{updateBombing,detonate}=load('lib/bombing.ts'),{enterCampaignStage}=load('lib/campaign.ts'),{drawBattle}=load('lib/battle-renderer.ts');
+const fresh=()=>{const g=new Battle(()=>.5);g.start();return g};
+let g=fresh();assert.equal(g.bombAmmo,2);g.player.vx=170;assert.ok(g.dropBomb());assert.equal(g.bombAmmo,1);assert.equal(g.playerBombs[0].vx,170);assert.equal(g.dropBomb(),false);
+updateBombing(g,1,new Set(['KeyB']));assert.equal(g.bombAmmo,0);updateBombing(g,1,new Set(['KeyB']));assert.equal(g.bombAmmo,0);assert.equal(g.dropBomb(),false);
+g=fresh();for(const state of ['paused','ready','over']){g.mode=state;assert.equal(g.dropBomb(),false)}g.mode='playing';g.briefingTimer=1;assert.equal(g.dropBomb(),false);g.briefingTimer=0;g.landed=true;assert.equal(g.dropBomb(),false);
+g=fresh();g.dropBomb();const b=g.playerBombs[0],y=b.y;g.pause();g.update(.03,new Set(['KeyB']));assert.equal(b.y,y);assert.equal(g.bombCooldown,.8);g.pause();g.loseLife();assert.equal(g.bombAmmo,1);g.spawnWave();assert.equal(g.bombAmmo,1);assert.equal(g.playerBombs.length,0);g.start();assert.equal(g.bombAmmo,2);
+g=fresh();const balloon=()=>({x:g.player.x,y:g.player.y-22,life:20});g.bombBalloons=[balloon()];updateBombing(g,0,new Set());assert.equal(g.bombAmmo,3);assert.equal(g.bombBalloons.length,0);g.bombBalloons=[balloon()];updateBombing(g,0,new Set());assert.equal(g.bombAmmo,3);assert.equal(g.bombBalloons.length,1);g.bombAmmo=1;g.bombBalloons[0].x+=100;updateBombing(g,0,new Set());assert.equal(g.bombAmmo,1);
+g=fresh();g.wave=6;g.spawnWave();g.briefingTimer=0;g.trucks=[{x:2995,y:585,hp:2,hits:0,timer:9}];detonate(g,5,580);assert.equal(g.trucks.length,0);assert.equal(g.stats.trucks,1);assert.equal(g.mission.progress,1);assert.ok(g.debris.length>0);assert.ok(g.particles.some(p=>p.smoke));const score=g.score;detonate(g,5,580);assert.equal(g.score,score);
+g=fresh();g.trucks=[{x:1000,y:585,hp:2,hits:0,timer:9}];detonate(g,1070,585);assert.equal(g.trucks[0].hp,1);detonate(g,1200,585);assert.equal(g.trucks[0].hp,1);
+g=fresh();enterCampaignStage(g,23);g.briefingTimer=0;const t=g.campaign.carriages[0],next=g.campaign.carriages[1];detonate(g,t.x,t.y-20);assert.equal(t.hp,1);assert.equal(next.hp,3);detonate(g,t.x,t.y-20);assert.equal(t.hp,0);
+g=fresh();g.trucks=[{x:1100,y:585,hp:2,hits:0,timer:9}];g.playerBombs=[{x:1100,y:500,vx:0,vy:100}];for(let i=0;i<60;i++)updateBombing(g,1/60,new Set());assert.equal(g.playerBombs.length,0);assert.equal(g.trucks.length,0);assert.ok(g.craters.length>0);
+const ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
+for(let stage=0;stage<15;stage++){enterCampaignStage(g,stage);g.bombBalloons=[{x:g.player.x,y:200,life:10}];g.playerBombs=[{x:600,y:400,vx:100,vy:200}];g.craters=[{x:600,life:10}];for(const t of g.campaign.carriages)t.hp=1;drawBattle(ctx,g)}
+console.log('PASS: limited bombs, momentum, guards, pause, ammo persistence, resupply cap, wrap-aware damage/credit, train balance, impact debris and rendering.');

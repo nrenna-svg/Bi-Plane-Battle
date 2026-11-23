@@ -1,0 +1,25 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),{load}=require('./load-typescript.cjs');
+let callback,now=0,hud,registered,refs=0,resumes=0,oscillators=0;let si=0,ri=0,tree;const states=[],refValues=[];
+const store=new Map([['biplane-battle-best','5000']]),events={},effects=[],cleanups=[];
+const ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
+const react={useRef(v){const i=ri++;return refValues[i]??=(i===0?{current:{getContext:()=>ctx}}:{current:v})},useState(v){const i=si++;if(!(i in states))states[i]=typeof v==='function'?v():v;return[states[i],next=>{states[i]=typeof next==='function'?next(states[i]):next}]},useEffect(fn){if(!tree)effects.push(fn)}};
+class AudioMock{sampleRate=8000;createBuffer(n,len){return{getChannelData:()=>new Float32Array(len)}}createBufferSource(){return{connect(){},start(){}}}currentTime=0;destination={};resume(){resumes++;return Promise.resolve()}close(){return Promise.resolve()}createOscillator(){oscillators++;return{frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){},setTargetAtTime(){}},connect(){},disconnect(){},start(){},stop(){}}}createGain(){return{gain:{value:0,linearRampToValueAtTime(){},setValueAtTime(){},exponentialRampToValueAtTime(){},setTargetAtTime(){}},connect(){},disconnect(){}}}}
+const sandbox={exports:{},require(n){if(n==='../components/island-command')return{IslandCommand:()=>null};if(n==='../components/mission-debrief')return{MissionDebrief:()=>null};if(n.includes('components/ui/radio-group'))return {RadioGroup:()=>null,RadioGroupItem:()=>null};if(n==='react')return react;if(n==='react/jsx-runtime')return{jsx:(type,props)=>({type,props}),jsxs:(type,props)=>({type,props})};if(n==='../components/workshop-part')return load('components/workshop-part.ts');if(n.startsWith('../lib/'))return load(n.replace('../','')+'.ts',{AudioContext:AudioMock,crypto:require('node:crypto').webcrypto,TextEncoder});return require(n)},window:{scrollTo(){},location:{reload(){}},matchMedia:()=>({matches:true}),addEventListener:(n,f)=>events[n]=f,removeEventListener(){}},document:{hidden:false,addEventListener:(n,f)=>events[n]=f,removeEventListener(){},modelContext:{registerTool:t=>registered=t}},localStorage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)},AbortController,requestAnimationFrame:f=>(callback=f,1),cancelAnimationFrame(){}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('app/page.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,sandbox);
+
+const render=()=>{si=0;ri=0;tree=sandbox.exports.default();return tree};
+const nodes=(node)=>!node?[]:Array.isArray(node)?node.flatMap(nodes):typeof node==='object'?[node,...nodes(node.props?.children)]:[];
+const text=node=>!node?'':Array.isArray(node)?node.map(text).join(''):typeof node==='object'?text(node.props?.children):String(node);
+const button=name=>nodes(tree).find(x=>x.type==='button'&&text(x)===name);
+(async()=>{
+render();effects.forEach(fn=>fn());render();
+assert.ok(button('Dev Tools'));assert.ok(button('Set password & unlock'));
+const inputs=nodes(tree).filter(x=>x.type==='input'&&x.props.type==='password');inputs[0].props.onChange({target:{value:'qa-only-test'}});inputs[1].props.onChange({target:{value:'qa-only-test'}});render();
+nodes(tree).find(x=>x.type==='form').props.onSubmit({preventDefault(){}});await new Promise(r=>setTimeout(r,20));render();assert.ok(button('Lock tools'),'password creation unlocks');
+button('Lock tools').props.onClick();render();nodes(tree).find(x=>x.type==='input'&&x.props.type==='password').props.onChange({target:{value:'wrong-test'}});render();nodes(tree).find(x=>x.type==='form').props.onSubmit({preventDefault(){}});await new Promise(r=>setTimeout(r,20));render();assert.ok(text(tree).includes('Incorrect password.'));assert.equal(button('Lock tools'),undefined);
+nodes(tree).find(x=>x.type==='input'&&x.props.type==='password').props.onChange({target:{value:'qa-only-test'}});render();nodes(tree).find(x=>x.type==='form').props.onSubmit({preventDefault(){}});await new Promise(r=>setTimeout(r,20));render();assert.ok(button('Lock tools'));
+callback(16);const before=JSON.stringify([...store]);
+nodes(tree).find(x=>x.type==='select'&&x.props.value===0).props.onChange({target:{value:'34'}});render();button('Launch test mission').props.onClick();render();assert.equal(registered.execute({action:'status'}).campaign.stage,34);assert.ok(text(tree).includes('TEST RUN'));
+for(let i=1;i<1500;i++)callback(16+i*16.667);assert.equal(JSON.stringify([...store]),before,'test simulation must not write ANY career saves');registered.execute({action:'start'});for(let i=0;i<300;i++)callback(26000+i*16.667);assert.equal(JSON.stringify([...store]),before,'changing mode must not escape test isolation');
+console.log('PASS: password creation/unlock/rejection, final-stage jump, simulation and quick-play persistence isolation');
+})().catch(e=>{console.error(e);process.exitCode=1});

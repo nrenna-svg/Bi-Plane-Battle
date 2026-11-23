@@ -1,0 +1,12 @@
+const fs=require('fs'),{load}=require('../tests/load-typescript.cjs');
+const {drawAirframe}=load('lib/airframes.ts'),{PLANES}=load('lib/progression.ts');
+fs.mkdirSync('public/aircraft',{recursive:true});
+for(const [id,p] of Object.entries(PLANES)){
+ let parts=[],path='',gradients=[],gid=0;
+ const esc=v=>String(v).replaceAll('&','&amp;').replaceAll('"','&quot;');
+ const c={fillStyle:'black',strokeStyle:'black',lineWidth:1,beginPath(){path=''},moveTo(x,y){path+='M'+x+','+y},lineTo(x,y){path+='L'+x+','+y},closePath(){path+='Z'},bezierCurveTo(...v){path+='C'+v.join(',')},quadraticCurveTo(...v){path+='Q'+v.join(',')},ellipse(x,y,rx,ry,rot,a,b){const start=[x+rx*Math.cos(a),y+ry*Math.sin(a)],end=[x+rx*Math.cos(b),y+ry*Math.sin(b)];if(Math.abs(b-a)>=6){path+='M'+(x-rx)+','+y+'a'+rx+','+ry+' 0 1,0 '+rx*2+',0a'+rx+','+ry+' 0 1,0 '+(-rx*2)+',0'}else path+='M'+start.join(',')+'A'+rx+','+ry+' '+rot*180/Math.PI+' 0,1 '+end.join(',')},arc(x,y,r,a,b){this.ellipse(x,y,r,r,0,a,b)},fill(){parts.push('<path d="'+path+'" fill="'+esc(this.fillStyle)+'"/>')},stroke(){parts.push('<path d="'+path+'" fill="none" stroke="'+esc(this.strokeStyle)+'" stroke-width="'+this.lineWidth+'"/>')},fillRect(x,y,w,h){parts.push('<rect x="'+x+'" y="'+y+'" width="'+Math.abs(w)+'" height="'+Math.abs(h)+'" fill="'+esc(this.fillStyle)+'"/>')},createLinearGradient(x,y,x2,y2){let id='g'+gid++,stops=[];gradients.push({id,x,y,x2,y2,stops});return{addColorStop(o,color){stops.push([o,color])},toString(){return 'url(#'+id+')'}}}};
+ const stack=[];let groups=0;c.save=()=>{stack.push({groups,fill:c.fillStyle,stroke:c.strokeStyle,width:c.lineWidth});parts.push('<g>');groups++};c.restore=()=>{const state=stack.pop();while(groups>state.groups){parts.push('</g>');groups--}c.fillStyle=state.fill;c.strokeStyle=state.stroke;c.lineWidth=state.width};c.translate=(x,y)=>{parts.push('<g transform="translate('+x+' '+y+')">');groups++};c.rotate=a=>{parts.push('<g transform="rotate('+(a*180/Math.PI)+')">');groups++};
+ drawAirframe(c,id,p.color,0);
+ fs.writeFileSync('public/aircraft/'+id+'.svg','<svg xmlns="http://www.w3.org/2000/svg" viewBox="-58 -40 116 80" role="img"><title>'+p.name+'</title><defs>'+gradients.map(g=>'<linearGradient id="'+g.id+'" gradientUnits="userSpaceOnUse" x1="'+g.x+'" y1="'+g.y+'" x2="'+g.x2+'" y2="'+g.y2+'">'+g.stops.map(([o,c])=>'<stop offset="'+o+'" stop-color="'+c+'"/>').join('')+'</linearGradient>').join('')+'</defs>'+parts.join('')+'</svg>');
+}
+console.log('Generated 16 aircraft previews from the in-game renderer.');

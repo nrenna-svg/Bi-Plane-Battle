@@ -1,0 +1,23 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),ts=require('typescript'),{load}=require('./load-typescript.cjs');
+let callback,now=0,hud,registered,refs=0,resumes=0,oscillators=0;
+const store=new Map([['biplane-battle-best','5000']]),events={},effects=[],cleanups=[];
+const ctx=new Proxy({createLinearGradient:()=>({addColorStop(){}})},{get:(o,k)=>o[k]??(()=>{}),set:(o,k,v)=>(o[k]=v,true)});
+const react={useRef(v){return{current:refs++===0?{getContext:()=>ctx}:v}},useState(v){return[typeof v==='function'?v():v,(next)=>{if(typeof next==='object')hud=next}]},useEffect(fn){effects.push(fn)}};
+class AudioMock{sampleRate=8000;createBuffer(n,len){return{getChannelData:()=>new Float32Array(len)}}createBufferSource(){return{connect(){},start(){}}}currentTime=0;destination={};resume(){resumes++;return Promise.resolve()}close(){return Promise.resolve()}createOscillator(){oscillators++;return{frequency:{setValueAtTime(){},exponentialRampToValueAtTime(){},setTargetAtTime(){}},connect(){},disconnect(){},start(){},stop(){}}}createGain(){return{gain:{value:0,linearRampToValueAtTime(){},setValueAtTime(){},exponentialRampToValueAtTime(){},setTargetAtTime(){}},connect(){},disconnect(){}}}}
+const sandbox={exports:{},require(n){if(n==='../components/island-command')return{IslandCommand:()=>null};if(n==='../components/mission-debrief')return{MissionDebrief:()=>null};if(n.includes('components/ui/radio-group'))return {RadioGroup:()=>null,RadioGroupItem:()=>null};if(n==='react')return react;if(n==='react/jsx-runtime')return{jsx:()=>null,jsxs:()=>null};if(n==='../components/workshop-part')return load('components/workshop-part.ts');if(n.startsWith('../lib/'))return load(n.replace('../','')+'.ts',{AudioContext:AudioMock});return require(n)},window:{matchMedia:()=>({matches:true}),addEventListener:(n,f)=>events[n]=f,removeEventListener(){}},document:{hidden:false,addEventListener:(n,f)=>events[n]=f,removeEventListener(){},modelContext:{registerTool:t=>registered=t}},localStorage:{getItem:k=>store.get(k),setItem:(k,v)=>store.set(k,v)},AbortController,requestAnimationFrame:f=>(callback=f,1),cancelAnimationFrame(){}};
+vm.runInNewContext(ts.transpileModule(fs.readFileSync('app/page.tsx','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,jsx:ts.JsxEmit.ReactJSX}}).outputText,sandbox);
+sandbox.exports.default();effects.forEach(fn=>{const cleanup=fn();if(cleanup)cleanups.push(cleanup)});
+const step=n=>{for(let i=0;i<n;i++){now+=16.667;callback(now)}};
+const action=a=>registered.execute({action:a});
+assert.equal(action('status').best,5000);assert.equal(action('status').mode,'ready');
+assert.equal(action('start').mode,'playing');step(1);assert.ok(resumes>0);assert.ok(oscillators>=2);
+action('pause');step(200);assert.equal(action('status').lives,3);assert.equal(action('status').mode,'paused');
+action('resume');events.keydown({code:'Space',preventDefault(){}});step(120);assert.equal(action('status').lives,3);
+events.keyup({code:'Space'});step(1400);assert.equal(action('status').mode,'over');assert.ok(action('status').stats.duration>0);
+assert.equal(action('start').score,0);assert.equal(action('status').best,5000);
+for(const input of [null,[],{}, {action:'invalid'}, {action:'start',extra:true}])assert.throws(()=>registered.execute(input));
+assert.equal(action('status').mode,'playing');events.blur();assert.equal(action('status').mode,'paused');
+action('resume');sandbox.document.hidden=true;events.visibilitychange();assert.equal(action('status').mode,'paused');
+const campaign=action('campaign');assert.equal(campaign.campaign.stage,0);assert.equal(campaign.briefingTimer,4);assert.equal(campaign.mode,'playing');step(300);assert.ok(action('status').campaign.elapsed>0);action('pause');const timer=action('status').campaign.elapsed;step(10);assert.equal(action('status').campaign.elapsed,timer);action('start');assert.equal(action('status').campaign,null);
+cleanups.forEach(fn=>fn());
+console.log('PASS: UI starts with saved personal best; sound unlocks; controls, pause/resume, game over, recap, restart and focus loss work; action contract rejects invalid input and cleans up.');
